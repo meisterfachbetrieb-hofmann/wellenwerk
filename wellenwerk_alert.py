@@ -23,6 +23,11 @@ import urllib.request
 import urllib.parse
 from datetime import datetime, timezone
 
+try:
+    from zoneinfo import ZoneInfo
+except Exception:
+    ZoneInfo = None
+
 STATE_FILE = "state.json"
 ZZ_THR = 0.08          # Swing-Schwelle wie in der App (8 %)
 ATR_MULT = 2           # Referenz für den ATR-Stop in Meldungen
@@ -276,60 +281,107 @@ def analyse(rows):
 
 # —— Meldungen ——————————————————————————————————————————————————
 
+def fmt_signed(v, dec=1):
+    if v is None:
+        return "–"
+    return ("+" if v >= 0 else "−") + fmt(abs(v), dec)
+
+
+def konf(k):
+    return ("+" if k >= 0 else "−") + str(abs(k)) + "/±5"
+
+
+STANCE_EMOJI = {"konstruktiv": "🟢", "neutral": "🟡", "defensiv": "🔴"}
+WOCHENTAGE = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
+
+HANDLUNG = {
+    "konstruktiv": "Long-Setup zulässig — aber nur mit gesetztem Stop und fester Positionsgröße aus dem Risiko-Rechner der App.",
+    "neutral": "Nichts erzwingen, beobachten. Neue Käufe erst bei Konfluenz ≥ +2 und Kurs über der SMA 200.",
+    "defensiv": "Keine neuen Käufe. Falls investiert: Stop prüfen — Referenz unten. Einstiege erst wieder bei Konfluenz ≥ +2 und Kurs über der SMA 200.",
+}
+
+
+def handlung_zeile(stance):
+    return f"\n\n📋 <b>Handlung:</b> {HANDLUNG[stance]}"
+
+
+def zeitstempel():
+    d = datetime.now(timezone.utc)
+    if ZoneInfo is not None:
+        try:
+            d = d.astimezone(ZoneInfo("Europe/Berlin"))
+        except Exception:
+            pass
+    return f"{WOCHENTAGE[d.weekday()]}, {d:%d.%m.%Y} · {d:%H:%M} Uhr"
+
+
 def pfeile(sig):
-    sym = {1: "↑", -1: "↓", 0: "·"}
-    return (f"Trend{sym[sig['trend']]} RSI{sym[sig['rsi']]} "
-            f"Mom{sym[sig['mom']]} Fib{sym[sig['fib']]} Vol{sym[sig['vol']]}")
+    sym = {1: "▲", -1: "▼", 0: "–"}
+    return (f"Trend {sym[sig['trend']]}  RSI {sym[sig['rsi']]}  "
+            f"Mom {sym[sig['mom']]}  Fib {sym[sig['fib']]}  Vol {sym[sig['vol']]}")
 
 
 def stop_zeile(a):
     if a["atr"] is None:
         return ""
-    return f"\nATR-Stop-Referenz: {fmt(a['price'] - ATR_MULT * a['atr'])} € (Kurs − {ATR_MULT}×ATR)"
+    return f"\n\n🛑 ATR-Stop-Referenz: <b>{fmt(a['price'] - ATR_MULT * a['atr'])} €</b>\n(Kurs − {ATR_MULT} × ATR)"
 
 
 def snapshot(a, quelle):
-    z = [f"Kurs {fmt(a['price'])} € · {'%+.1f' % a['mom30']} % / 30 T",
-         f"Haltung: {a['stance'].upper()} · Konfluenz {a['konfluenz']:+d} ({pfeile(a['signals'])})",
-         f"Regime: {a['regime']} SMA 200 ({fmt(a['s200'])} €)"]
+    z = [
+        f"{STANCE_EMOJI[a['stance']]} Haltung: <b>{a['stance'].upper()}</b>",
+        f"Konfluenz {konf(a['konfluenz'])} · {pfeile(a['signals'])}",
+        "",
+        handlung_zeile(a["stance"]).lstrip("\n"),
+        "",
+        f"💶 Kurs: <b>{fmt(a['price'])} €</b> ({fmt_signed(a['mom30'])} % / 30 T)",
+        f"{'📈' if a['regime'] == 'über' else '📉'} Regime: Kurs {a['regime']} SMA 200 ({fmt(a['s200'])} €)",
+    ]
     if a["swing"]:
         sw = a["swing"]
-        z.append(f"Swing {'auf' if sw['up'] else 'ab'}wärts {fmt(sw['a'])} → {fmt(sw['b'])} €")
-        z.append(f"0,618 bei {fmt(sw['retr618'])} € · Ziel 1,272 bei {fmt(sw['ext1272'])} €")
-    z.append(f"Quelle: {quelle}")
-    return "\n".join(z) + stop_zeile(a)
+        z += [
+            "",
+            f"🌊 Swing: {'auf' if sw['up'] else 'ab'}wärts {fmt(sw['a'])} → {fmt(sw['b'])} €",
+            f"├ 0,618-Level: {fmt(sw['retr618'])} €",
+            f"└ Ziel 1,272: {fmt(sw['ext1272'])} €",
+        ]
+    return "\n".join(z) + stop_zeile(a) + f"\n\n<i>Quelle: {quelle}</i>"
 
 
 def vergleiche(prev, cur):
     """Nur Zustandswechsel melden — die Kernidee des Wächters."""
     msgs = []
     if prev.get("stance") != cur["stance"]:
-        msgs.append(f"⚙ Haltung gewechselt: {prev.get('stance', '?').upper()} → {cur['stance'].upper()}\n"
-                    f"Konfluenz {cur['konfluenz']:+d} ({pfeile(cur['signals'])}), "
-                    f"Kurs {cur['regime']} SMA 200.{stop_zeile(cur)}")
+        msgs.append(f"{STANCE_EMOJI[cur['stance']]} <b>Haltung gewechselt</b>\n"
+                    f"{prev.get('stance', '?').upper()} → <b>{cur['stance'].upper()}</b>\n"
+                    f"Konfluenz {konf(cur['konfluenz'])} · {pfeile(cur['signals'])}\n"
+                    f"Kurs {cur['regime']} SMA 200.{handlung_zeile(cur['stance'])}{stop_zeile(cur)}")
     if prev.get("regime") != cur["regime"]:
-        msgs.append(f"⚙ Regime gekippt: Kurs jetzt {cur['regime'].upper()} der SMA 200 "
-                    f"({fmt(cur['s200'])} €).")
+        pfeil = "📈" if cur["regime"] == "über" else "📉"
+        msgs.append(f"{pfeil} <b>Regime gekippt</b>\n"
+                    f"Kurs jetzt <b>{cur['regime'].upper()}</b> der SMA 200 ({fmt(cur['s200'])} €).")
     if cur["rsi_zone"] != "mitte" and prev.get("rsi_zone") != cur["rsi_zone"]:
-        lage = "überverkauft (<30)" if cur["rsi_zone"] == "unter30" else "überkauft (>70)"
-        msgs.append(f"⚙ RSI 14 jetzt {lage}: {cur['rsi']:.1f}")
+        lage = "überverkauft (&lt;30)" if cur["rsi_zone"] == "unter30" else "überkauft (&gt;70)"
+        msgs.append(f"📐 <b>RSI-Extremzone</b>\nRSI 14 jetzt {lage}: <b>{cur['rsi']:.1f}</b>")
 
     sw, psw = cur.get("swing"), prev.get("swing")
     gleicher_swing = sw and psw and sw["id"] == psw["id"]
 
     if cur["pivots"] > prev.get("pivots", 0) and sw:
-        msgs.append(f"⚙ Neuer Swing bestätigt ({'auf' if sw['up'] else 'ab'}wärts "
-                    f"{fmt(sw['a'])} → {fmt(sw['b'])} €).\n"
-                    f"Neue Level: 0,618 bei {fmt(sw['retr618'])} € · Ziel 1,272 bei {fmt(sw['ext1272'])} €")
+        msgs.append(f"🌊 <b>Neuer Swing bestätigt</b>\n"
+                    f"{'Auf' if sw['up'] else 'Ab'}wärts {fmt(sw['a'])} → {fmt(sw['b'])} €\n"
+                    f"├ 0,618-Level: {fmt(sw['retr618'])} €\n"
+                    f"└ Ziel 1,272: {fmt(sw['ext1272'])} €")
     elif gleicher_swing:
         pfib = prev.get("signals", {}).get("fib", 0)
         if cur["signals"]["fib"] != pfib and cur["signals"]["fib"] != 0:
             verloren = cur["signals"]["fib"] < 0
-            msgs.append(f"⚙ 0,618-Level ({fmt(sw['retr618'])} €) "
-                        f"{'VERLOREN — Struktur beschädigt' if verloren else 'zurückerobert — Struktur wieder intakt'}."
-                        f"{stop_zeile(cur)}")
+            msgs.append(f"⚠️ <b>0,618-Level {'verloren' if verloren else 'zurückerobert'}</b>\n"
+                        f"Level: {fmt(sw['retr618'])} € — Struktur "
+                        f"{'beschädigt' if verloren else 'wieder intakt'}.{stop_zeile(cur)}")
         if cur["target_hit"] and not prev.get("target_hit", False):
-            msgs.append(f"⚙ ZIELZONE erreicht: 1,272-Extension bei {fmt(sw['ext1272'])} €.\n"
+            msgs.append(f"🎯 <b>Zielzone erreicht</b>\n"
+                        f"1,272-Extension bei <b>{fmt(sw['ext1272'])} €</b>\n"
                         f"Regel-Erinnerung: Teilverkauf erwägen, Stop der Restposition auf Einstand.")
     return msgs
 
@@ -339,11 +391,12 @@ def vergleiche(prev, cur):
 def sende(text):
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     chat = os.environ.get("TELEGRAM_CHAT_ID")
-    kopf = "🔧 Wellenwerk · BTC\n" + datetime.now(timezone.utc).strftime("%d.%m.%Y %H:%M UTC") + "\n\n"
+    kopf = "🔧 <b>Wellenwerk · BTC</b>\n" + zeitstempel() + "\n\n"
     if not token or not chat:
         print("[TROCKENMODUS — keine Telegram-Secrets gesetzt]\n" + kopf + text)
         return
-    data = urllib.parse.urlencode({"chat_id": chat, "text": kopf + text}).encode()
+    data = urllib.parse.urlencode({"chat_id": chat, "text": kopf + text,
+                                   "parse_mode": "HTML"}).encode()
     req = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage",
                                  data=data, headers=UA)
     with urllib.request.urlopen(req, timeout=25) as r:
@@ -407,7 +460,7 @@ def main():
     a = analyse(rows)
     prev = lade_zustand()
     if prev is None:
-        sende("Wächter aktiv — Startbericht:\n\n" + snapshot(a, quelle))
+        sende("✅ <b>Wächter aktiv</b> — Startbericht\n\n" + snapshot(a, quelle))
     else:
         msgs = vergleiche(prev, a)
         if msgs:
