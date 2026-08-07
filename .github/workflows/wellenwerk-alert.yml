@@ -1,26 +1,26 @@
-# Wellenwerk WÃ¤chter â€” lÃ¤uft stÃ¼ndlich, meldet Zustandswechsel per Telegram.
+# Wellenwerk Wächter — läuft stündlich, meldet Zustandswechsel per Telegram.
 # Ablageort im Repo: .github/workflows/wellenwerk-alert.yml
 name: Wellenwerk Alert
 
 on:
   schedule:
-    - cron: "7 * * * *"   # stÃ¼ndlich, Minute 7 (volle Stunden sind bei GitHub Ã¼berlastet)
-  workflow_dispatch: {}    # zusÃ¤tzlich manuell startbar (Reiter "Actions" â†’ "Run workflow")
+    - cron: "7 * * * *"   # stündlich, Minute 7 (volle Stunden sind bei GitHub überlastet)
+  workflow_dispatch: {}    # zusätzlich manuell startbar (Reiter "Actions" → "Run workflow")
 
 permissions:
-  contents: write          # nÃ¶tig, um state.json zurÃ¼ck ins Repo zu schreiben
+  contents: write          # nötig, um state.json zurück ins Repo zu schreiben
 
 jobs:
   alert:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
-      - name: WÃ¤chter ausfÃ¼hren
+      - name: Wächter ausführen
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -31,4 +31,10 @@ jobs:
           git config user.name "wellenwerk-bot"
           git config user.email "actions@users.noreply.github.com"
           git add state.json
-          git diff --cached --quiet || (git commit -m "Zustand aktualisiert" && git push)
+          if git diff --cached --quiet; then
+            echo "Kein neuer Zustand — nichts zu sichern."
+            exit 0
+          fi
+          git commit -m "Zustand aktualisiert"
+          git pull --rebase origin main || true
+          git push
