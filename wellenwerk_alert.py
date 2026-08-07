@@ -18,6 +18,7 @@
 import json
 import os
 import sys
+import time
 import random
 import urllib.request
 import urllib.parse
@@ -60,9 +61,10 @@ def load_binance():
                      "l": float(x[3]), "c": float(x[4]), "v": float(x[5])} for x in k]
             if len(rows) >= 250:
                 return rows, f"Binance ({host.split('//')[1]})"
-        except Exception:
+        except Exception as e:
+            print(f"  {host}: {e}")
             continue
-    raise RuntimeError("Binance nicht erreichbar")
+    raise RuntimeError("beide Binance-Hosts nicht erreichbar")
 
 
 def load_kraken():
@@ -90,12 +92,18 @@ def load_coingecko():
 
 
 def load_data():
-    for fn in (load_binance, load_kraken, load_coingecko):
-        try:
-            return fn()
-        except Exception:
-            continue
-    raise RuntimeError("Keine Datenquelle erreichbar")
+    quellen = ((load_binance, "Binance"), (load_kraken, "Kraken"), (load_coingecko, "CoinGecko"))
+    for fn, name in quellen:
+        for versuch in (1, 2):
+            try:
+                rows, quelle = fn()
+                print(f"Datenquelle: {quelle} · {len(rows)} Tage")
+                return rows, quelle
+            except Exception as e:
+                print(f"{name}, Versuch {versuch}: {e}")
+                if versuch == 1:
+                    time.sleep(4)
+    raise RuntimeError("Keine Datenquelle erreichbar — der nächste Stundenlauf versucht es automatisch erneut.")
 
 
 # —— Indikatoren (identisch zur App) ————————————————————————————
@@ -456,7 +464,11 @@ def main():
     if "--selftest" in sys.argv:
         selftest()
         return
-    rows, quelle = load_data()
+    try:
+        rows, quelle = load_data()
+    except RuntimeError as e:
+        print(f"⚠ {e}")
+        sys.exit(1)
     a = analyse(rows)
     prev = lade_zustand()
     if prev is None:
