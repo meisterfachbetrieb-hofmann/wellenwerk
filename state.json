@@ -1,10 +1,10 @@
 {
  "stance": "defensiv",
  "regime": "unter",
- "rsi_zone": "mitte",
+ "rsi_zone": "ueber70",
  "pivots": 46,
  "target_hit": false,
- "price": 59178.05,
+ "price": 59348.88,
  "swing": {
   "id": "933-948",
   "up": false,
@@ -15,10 +15,10 @@
  },
  "signals": {
   "trend": -1,
-  "rsi": 0,
+  "rsi": -1,
   "mom": 0,
   "fib": 1,
   "vol": 0
  },
- "ts": "2026-08-20T03:58:02.154340+00:00"
+ "ts": "2026-08-20T04:48:40.092701+00:00"
 }
