@@ -4,7 +4,7 @@
  "rsi_zone": "mitte",
  "pivots": 46,
  "target_hit": false,
- "price": 69974.83,
+ "price": 70788.32,
  "swing": {
   "id": "902-917",
   "up": false,
@@ -16,9 +16,9 @@
  "signals": {
   "trend": 1,
   "rsi": 0,
-  "mom": 0,
+  "mom": 1,
   "fib": 1,
   "vol": 1
  },
- "ts": "2026-09-20T12:15:46.661852+00:00"
+ "ts": "2026-09-20T16:46:09.316385+00:00"
 }
