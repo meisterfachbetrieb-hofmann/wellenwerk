@@ -1,12 +1,12 @@
 {
  "stance": "konstruktiv",
  "regime": "über",
- "rsi_zone": "ueber70",
+ "rsi_zone": "mitte",
  "pivots": 46,
  "target_hit": false,
- "price": 75594.61,
+ "price": 74491.22,
  "swing": {
-  "id": "901-916",
+  "id": "900-915",
   "up": false,
   "a": 57188.17,
   "b": 51300.97,
@@ -15,10 +15,10 @@
  },
  "signals": {
   "trend": 1,
-  "rsi": -1,
+  "rsi": 0,
   "mom": 1,
   "fib": 1,
-  "vol": 1
+  "vol": 0
  },
- "ts": "2026-09-21T23:14:00.236260+00:00"
+ "ts": "2026-09-22T04:46:28.142418+00:00"
 }
